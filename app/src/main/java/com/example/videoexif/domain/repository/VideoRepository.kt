@@ -9,7 +9,7 @@ interface VideoRepository {
     fun getVideos(): Flow<List<VideoData>>
     fun getLocationUpdates(intervalMillis: Long): Flow<LocationPoint>
     suspend fun startRecording(surfaceTexture: SurfaceTexture)
-    suspend fun stopRecording(startTime: Long, points: List<LocationPoint>)
+    suspend fun stopRecording(startTime: Long, points: List<LocationPoint>): Boolean
     fun openCamera(onOpened: () -> Unit)
     fun startPreview(surfaceTexture: SurfaceTexture)
     fun closeCamera()

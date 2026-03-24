@@ -83,10 +83,14 @@ class RecordViewModel(
         viewModelScope.launch {
             try {
                 locationJob?.cancel()
-                repository.stopRecording(_state.value.recordingStartTime, _state.value.locationPoints)
+                val moved = repository.stopRecording(_state.value.recordingStartTime, _state.value.locationPoints)
                 
                 _state.update { it.copy(isRecording = false) }
                 repository.startPreview(surfaceTexture)
+
+                if (!moved) {
+                    _effect.emit(RecordEffect.ShowToast("No motion detected. Recording discarded."))
+                }
             } catch (e: Exception) {
                 _state.update { it.copy(error = e.message) }
                 _effect.emit(RecordEffect.ShowToast("Failed to stop recording: ${e.message}"))

@@ -3,18 +3,31 @@ package com.example.videoexif.presentation.record
 import android.graphics.SurfaceTexture
 import android.view.TextureView
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 
 @Composable
 fun RecordScreen(viewModel: RecordViewModel) {
     val state by viewModel.state.collectAsState()
+    val context = LocalContext.current
     var surfaceTexture by remember { mutableStateOf<SurfaceTexture?>(null) }
+
+    LaunchedEffect(viewModel.effect) {
+        viewModel.effect.collect { effect ->
+            when (effect) {
+                is RecordEffect.ShowToast -> {
+                    Toast.makeText(context, effect.message, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         AndroidView(
