@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -33,6 +34,7 @@ import com.example.videoexif.presentation.playback.VideoPlaybackScreen
 import com.example.videoexif.presentation.record.RecordScreen
 import com.example.videoexif.presentation.record.RecordViewModel
 import com.example.videoexif.ui.theme.VideoExifTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -66,6 +68,9 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainScreen(factory: ViewModelProvider.Factory) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+    
     var hasPermissions by remember {
         mutableStateOf(
             REQUIRED_PERMISSIONS.all {
@@ -89,8 +94,29 @@ fun MainScreen(factory: ViewModelProvider.Factory) {
     if (hasPermissions) {
         var currentTab by remember { mutableIntStateOf(0) }
         var selectedVideo by remember { mutableStateOf<VideoData?>(null) }
+        var lastBackPressTime by remember { mutableLongStateOf(0L) }
+
+        BackHandler {
+            if (selectedVideo != null) {
+                selectedVideo = null
+            } else {
+                val currentTime = System.currentTimeMillis()
+                if (currentTime - lastBackPressTime < 2000) {
+                    (context as? ComponentActivity)?.finish()
+                } else {
+                    lastBackPressTime = currentTime
+                    scope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = "Tap again to exit the app",
+                            duration = SnackbarDuration.Short
+                        )
+                    }
+                }
+            }
+        }
 
         Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHostState) },
             bottomBar = {
                 NavigationBar {
                     NavigationBarItem(
