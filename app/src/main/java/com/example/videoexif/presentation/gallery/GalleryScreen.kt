@@ -2,15 +2,20 @@ package com.example.videoexif.presentation.gallery
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -60,34 +65,48 @@ fun VideoItem(
         modifier = Modifier.padding(8.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {
+                    onViewVideo()
+                }
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
             Text(
                 text = video.videoFile.nameWithoutExtension,
-                style = MaterialTheme.typography.titleMedium
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f)
             )
             
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Button(onClick = onViewVideo) {
-                    Text("View Video")
-                }
-                Button(
-                    onClick = onOpenInMaps,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondary
+//                IconButton(onClick = onViewVideo) {
+//                    Icon(
+//                        imageVector = Icons.Default.PlayArrow,
+//                        contentDescription = "View Video",
+//                        tint = MaterialTheme.colorScheme.primary
+//                    )
+//                }
+                IconButton(onClick = onOpenInMaps) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = "Open in Maps",
+                        tint = MaterialTheme.colorScheme.secondary
                     )
-                ) {
-                    Text("Open in Maps")
                 }
-                Button(
-                    onClick = onShareGps,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.tertiary
+                IconButton(onClick = onShareGps) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = "Share GPS",
+                        tint = MaterialTheme.colorScheme.tertiary
                     )
-                ) {
-                    Text("Share GPS")
                 }
             }
         }

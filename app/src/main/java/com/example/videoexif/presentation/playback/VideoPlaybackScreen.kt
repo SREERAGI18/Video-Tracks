@@ -6,22 +6,32 @@ import android.net.Uri
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.example.videoexif.domain.model.VideoData
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.*
 import kotlinx.coroutines.delay
+import org.osmdroid.config.Configuration
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polyline
 import java.io.File
 
 @Composable
@@ -32,6 +42,16 @@ fun VideoPlaybackScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Initialize OSMdroid configuration
+    remember {
+        Configuration.getInstance().load(
+            context,
+            context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE)
+        )
+        true
+    }
 
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
@@ -57,24 +77,28 @@ fun VideoPlaybackScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Button(onClick = onBack) { Text("Back to Gallery") }
-            Button(
-                onClick = { openGpxInMaps(context, videoData.gpxFile) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.secondary
-                )
-            ) {
-                Text("Open in Maps")
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
-            Button(
-                onClick = { shareGpxFile(context, videoData.gpxFile, videoData.videoFile) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.tertiary
-                )
-            ) {
-                Text("Share GPS")
+            
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                IconButton(onClick = { openGpxInMaps(context, videoData.gpxFile) }) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = "Open in Maps",
+                        tint = MaterialTheme.colorScheme.secondary
+                    )
+                }
+                IconButton(onClick = { shareGpxFile(context, videoData.gpxFile, videoData.videoFile) }) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = "Share GPS",
+                        tint = MaterialTheme.colorScheme.tertiary
+                    )
+                }
             }
         }
         
@@ -93,34 +117,64 @@ fun VideoPlaybackScreen(
                 .height(250.dp)
         )
 
-        Box(modifier = Modifier.weight(1f)) {
-            val cameraPositionState = rememberCameraPositionState()
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .clipToBounds()
+        ) {
+            val mapView = remember { MapView(context) }
             
-            LaunchedEffect(state.currentLocation) {
-                state.currentLocation?.let {
-                    cameraPositionState.position = CameraPosition.fromLatLngZoom(
-                        LatLng(it.latitude, it.longitude), 16f
-                    )
+            // Handle OSMdroid Lifecycle
+            DisposableEffect(lifecycleOwner) {
+                val observer = LifecycleEventObserver { _, event ->
+                    when (event) {
+                        Lifecycle.Event.ON_RESUME -> mapView.onResume()
+                        Lifecycle.Event.ON_PAUSE -> mapView.onPause()
+                        else -> {}
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose {
+                    lifecycleOwner.lifecycle.removeObserver(observer)
                 }
             }
 
-            GoogleMap(
-                modifier = Modifier.fillMaxSize(),
-                cameraPositionState = cameraPositionState
-            ) {
-                state.currentLocation?.let {
-                    Marker(
-                        state = MarkerState(position = LatLng(it.latitude, it.longitude)),
-                        title = "Current Position"
-                    )
+            AndroidView(
+                modifier = Modifier.fillMaxSize().clipToBounds(),
+                factory = { 
+                    mapView.apply {
+                        setMultiTouchControls(true)
+                        controller.setZoom(16.0)
+                    }
+                },
+                update = { mv ->
+                    mv.overlays.clear()
+                    
+                    // Add Path Polyline
+                    val pathPoints = state.locationPoints.map { GeoPoint(it.latitude, it.longitude) }
+                    if (pathPoints.isNotEmpty()) {
+                        val polyline = Polyline(mv)
+                        polyline.setPoints(pathPoints)
+                        polyline.outlinePaint.color = android.graphics.Color.BLUE
+                        polyline.outlinePaint.strokeWidth = 5f
+                        mv.overlays.add(polyline)
+                    }
+
+                    // Add Current Location Marker
+                    state.currentLocation?.let { loc ->
+                        val currentPoint = GeoPoint(loc.latitude, loc.longitude)
+                        val marker = Marker(mv)
+                        marker.position = currentPoint
+                        marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        marker.title = "Current Position"
+                        mv.overlays.add(marker)
+                        
+                        mv.controller.animateTo(currentPoint)
+                    }
+                    
+                    mv.invalidate()
                 }
-                
-                Polyline(
-                    points = state.locationPoints.map { LatLng(it.latitude, it.longitude) },
-                    color = Color.Blue,
-                    width = 5f
-                )
-            }
+            )
         }
     }
 }

@@ -11,7 +11,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.videoexif"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
@@ -54,8 +54,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     
     implementation(libs.play.services.location)
-    implementation(libs.play.services.maps)
-    implementation(libs.maps.compose)
+    implementation(libs.osmdroid)
     
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
