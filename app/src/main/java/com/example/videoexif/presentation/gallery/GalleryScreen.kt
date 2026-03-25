@@ -16,6 +16,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -47,7 +48,8 @@ fun GalleryScreen(
                     video = video,
                     onViewVideo = { onVideoSelected(video) },
                     onOpenInMaps = { openGpxInMaps(context, video.gpxFile) },
-                    onShareGps = { shareGpxFile(context, video.gpxFile, video.videoFile) }
+                    onShareGps = { shareGpxFile(context, video.gpxFile, video.videoFile) },
+                    onShareSrt = { video.srtFile?.let { shareSrtFile(context, it, video.videoFile) } }
                 )
             }
         }
@@ -59,7 +61,8 @@ fun VideoItem(
     video: VideoData,
     onViewVideo: () -> Unit,
     onOpenInMaps: () -> Unit,
-    onShareGps: () -> Unit
+    onShareGps: () -> Unit,
+    onShareSrt: () -> Unit
 ) {
     Card(
         modifier = Modifier.padding(8.dp),
@@ -87,13 +90,6 @@ fun VideoItem(
             Row(
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-//                IconButton(onClick = onViewVideo) {
-//                    Icon(
-//                        imageVector = Icons.Default.PlayArrow,
-//                        contentDescription = "View Video",
-//                        tint = MaterialTheme.colorScheme.primary
-//                    )
-//                }
                 IconButton(onClick = onOpenInMaps) {
                     Icon(
                         imageVector = Icons.Default.LocationOn,
@@ -107,6 +103,15 @@ fun VideoItem(
                         contentDescription = "Share GPS",
                         tint = MaterialTheme.colorScheme.tertiary
                     )
+                }
+                if (video.srtFile != null) {
+                    IconButton(onClick = onShareSrt) {
+                        Icon(
+                            imageVector = Icons.Default.ClosedCaption,
+                            contentDescription = "Share Subtitles (SRT)",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
         }
@@ -133,6 +138,29 @@ private fun shareGpxFile(context: Context, gpxFile: File, videoFile: File) {
         context.startActivity(chooser)
     } catch (e: Exception) {
         Toast.makeText(context, "Error sharing GPX file", Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun shareSrtFile(context: Context, srtFile: File, videoFile: File) {
+    try {
+        val contentUri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            srtFile
+        )
+        
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_STREAM, contentUri)
+            putExtra(Intent.EXTRA_SUBJECT, "Video Recording Subtitles")
+            putExtra(Intent.EXTRA_TEXT, "Subtitles for video: ${videoFile.name}")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        
+        val chooser = Intent.createChooser(intent, "Share Subtitles (SRT)")
+        context.startActivity(chooser)
+    } catch (e: Exception) {
+        Toast.makeText(context, "Error sharing SRT file", Toast.LENGTH_SHORT).show()
     }
 }
 

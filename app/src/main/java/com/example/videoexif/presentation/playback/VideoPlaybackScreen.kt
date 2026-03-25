@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
@@ -22,7 +23,9 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.example.videoexif.domain.model.VideoData
@@ -55,7 +58,21 @@ fun VideoPlaybackScreen(
 
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(Uri.fromFile(videoData.videoFile)))
+            val videoUri = Uri.fromFile(videoData.videoFile)
+            val mediaItemBuilder = MediaItem.Builder()
+                .setUri(videoUri)
+            
+            // Add SRT subtitle if it exists
+            videoData.srtFile?.let { srtFile ->
+                val subtitle = MediaItem.SubtitleConfiguration.Builder(Uri.fromFile(srtFile))
+                    .setMimeType(MimeTypes.APPLICATION_SUBRIP)
+                    .setLanguage("en")
+                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                    .build()
+                mediaItemBuilder.setSubtitleConfigurations(listOf(subtitle))
+            }
+            
+            setMediaItem(mediaItemBuilder.build())
             prepare()
         }
     }
@@ -98,6 +115,15 @@ fun VideoPlaybackScreen(
                         contentDescription = "Share GPS",
                         tint = MaterialTheme.colorScheme.tertiary
                     )
+                }
+                videoData.srtFile?.let { srtFile ->
+                    IconButton(onClick = { shareSrtFile(context, srtFile, videoData.videoFile) }) {
+                        Icon(
+                            imageVector = Icons.Default.ClosedCaption,
+                            contentDescription = "Share Subtitles",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
         }
@@ -194,6 +220,24 @@ private fun shareGpxFile(context: Context, gpxFile: File, videoFile: File) {
         context.startActivity(Intent.createChooser(intent, "Open GPS Track"))
     } catch (e: Exception) {
         Toast.makeText(context, "Error sharing GPX", Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun shareSrtFile(context: Context, srtFile: File, videoFile: File) {
+    try {
+        val contentUri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            srtFile
+        )
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_STREAM, contentUri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share Subtitles"))
+    } catch (e: Exception) {
+        Toast.makeText(context, "Error sharing SRT", Toast.LENGTH_SHORT).show()
     }
 }
 

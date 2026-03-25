@@ -21,6 +21,8 @@ import kotlinx.coroutines.flow.map
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 class VideoRepositoryImpl(
     private val context: Context,
@@ -31,7 +33,7 @@ class VideoRepositoryImpl(
     private var currentParcelFd: ParcelFileDescriptor? = null
     private var currentBaseName: String? = null
     private var currentVideoUri: Uri? = null
-    private val fileNameFormatter = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")
+    private val fileNameFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH:mm:ss")
 
     override fun getVideos(): Flow<List<VideoData>> = flow {
         val moviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
@@ -40,7 +42,14 @@ class VideoRepositoryImpl(
         if (moviesDir?.exists() == true) {
             val videos = moviesDir.listFiles { _, name -> name.endsWith(".mp4") }?.mapNotNull { videoFile ->
                 val gpxFile = File(appDataDir, videoFile.nameWithoutExtension + ".gpx")
-                if (gpxFile.exists()) VideoData(videoFile, gpxFile) else null
+                val srtFile = File(appDataDir, videoFile.nameWithoutExtension + ".srt")
+                if (gpxFile.exists()) {
+                    VideoData(
+                        videoFile = videoFile,
+                        gpxFile = gpxFile,
+                        srtFile = if (srtFile.exists()) srtFile else null
+                    )
+                } else null
             }?.sortedByDescending { it.videoFile.lastModified() } ?: emptyList()
             emit(videos)
         } else {
@@ -84,9 +93,10 @@ class VideoRepositoryImpl(
         if (moved) {
             currentBaseName?.let { baseName ->
                 saveGpxMetadata(baseName, startTime, points)
+                saveSrtMetadata(baseName, startTime, points)
             }
         } else {
-            // No motion detected, discard the video and don't save GPX
+            // No motion detected, discard the video and don't save GPX/SRT
             currentVideoUri?.let { uri ->
                 try {
                     context.contentResolver.delete(uri, null, null)
@@ -175,10 +185,32 @@ class VideoRepositoryImpl(
         }
     }
 
+    private fun saveSrtMetadata(baseName: String, startTime: Long, points: List<LocationPoint>) {
+        try {
+            val documentsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+            val appDataDir = File(documentsDir, "VideoExif")
+            if (!appDataDir.exists()) {
+                appDataDir.mkdirs()
+            }
+            
+            val srtFile = File(appDataDir, "$baseName.srt")
+            srtFile.writeText(createSrtContent(startTime, points))
+            
+            MediaScannerConnection.scanFile(
+                context,
+                arrayOf(srtFile.absolutePath),
+                arrayOf("text/plain"),
+                null
+            )
+        } catch (e: Exception) {
+            Log.e("VideoRepository", "Error saving SRT metadata", e)
+        }
+    }
+
     private fun createGpxContent(startTime: Long, points: List<LocationPoint>): String {
         val dateFormat = java.text.SimpleDateFormat(
             "yyyy-MM-dd'T'HH:mm:ss'Z'",
-            java.util.Locale.US
+            Locale.US
         ).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
 
         return buildString {
@@ -188,12 +220,39 @@ class VideoRepositoryImpl(
             points.forEach { point ->
                 val time = dateFormat.format(java.util.Date(point.timestamp))
                 val offset = point.timestamp - startTime
-                appendLine("<trkpt lat=\"${"%.6f".format(java.util.Locale.US, point.latitude)}\" lon=\"${"%.6f".format(java.util.Locale.US, point.longitude)}\">")
+                appendLine("<trkpt lat=\"${"%.6f".format(Locale.US, point.latitude)}\" lon=\"${"%.6f".format(Locale.US, point.longitude)}\">")
                 appendLine("<time>$time</time>")
                 appendLine("<extensions><video:offset>$offset</video:offset></extensions>")
                 appendLine("</trkpt>")
             }
             appendLine("</trkseg></trk></gpx>")
         }
+    }
+
+    private fun createSrtContent(startTime: Long, points: List<LocationPoint>): String {
+        return buildString {
+            points.forEachIndexed { index, point ->
+                val startOffset = point.timestamp - startTime
+                // If there's a next point, the duration is the gap. Otherwise, default to 1s.
+                val endOffset = if (index < points.size - 1) {
+                    points[index + 1].timestamp - startTime
+                } else {
+                    startOffset + 1000
+                }
+
+                appendLine("${index + 1}")
+                appendLine("${formatSrtTime(startOffset)} --> ${formatSrtTime(endOffset)}")
+                appendLine("Lat: ${"%.6f".format(Locale.US, point.latitude)}, Lon: ${"%.6f".format(Locale.US, point.longitude)}")
+                appendLine()
+            }
+        }
+    }
+
+    private fun formatSrtTime(millis: Long): String {
+        val hours = TimeUnit.MILLISECONDS.toHours(millis)
+        val minutes = TimeUnit.MILLISECONDS.toMinutes(millis) % 60
+        val seconds = TimeUnit.MILLISECONDS.toSeconds(millis) % 60
+        val ms = millis % 1000
+        return "%02d:%02d:%02d,%03d".format(Locale.US, hours, minutes, seconds, ms)
     }
 }
