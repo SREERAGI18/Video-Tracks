@@ -5,5 +5,6 @@ import java.io.File
 data class VideoData(
     val videoFile: File,
     val gpxFile: File,
-    val srtFile: File? = null
+    val srtFile: File? = null,
+    val isSynced: Boolean = false
 )

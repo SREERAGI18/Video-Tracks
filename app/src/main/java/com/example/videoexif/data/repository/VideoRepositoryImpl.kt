@@ -11,13 +11,18 @@ import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import android.util.Log
 import com.example.videoexif.data.datasource.LocationTracker
+import com.example.videoexif.data.datasource.SyncStatusDataSource
 import com.example.videoexif.data.datasource.VideoRecorder
+import com.example.videoexif.data.remote.RetrofitClient
 import com.example.videoexif.domain.model.LocationPoint
 import com.example.videoexif.domain.model.VideoData
 import com.example.videoexif.domain.repository.VideoRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -30,10 +35,12 @@ class VideoRepositoryImpl(
     private val locationTracker: LocationTracker
 ) : VideoRepository {
 
+    private val syncStatusDataSource = SyncStatusDataSource(context)
     private var currentParcelFd: ParcelFileDescriptor? = null
     private var currentBaseName: String? = null
     private var currentVideoUri: Uri? = null
     private val fileNameFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH:mm:ss")
+    private val apiService = RetrofitClient.videoApiService
 
     override fun getVideos(): Flow<List<VideoData>> = flow {
         val moviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
@@ -47,7 +54,8 @@ class VideoRepositoryImpl(
                     VideoData(
                         videoFile = videoFile,
                         gpxFile = gpxFile,
-                        srtFile = if (srtFile.exists()) srtFile else null
+                        srtFile = if (srtFile.exists()) srtFile else null,
+                        isSynced = syncStatusDataSource.isSynced(videoFile.name)
                     )
                 } else null
             }?.sortedByDescending { it.videoFile.lastModified() } ?: emptyList()
@@ -148,6 +156,69 @@ class VideoRepositoryImpl(
 
     override fun stopBackgroundThread() {
         videoRecorder.stopBackgroundThread()
+    }
+
+    override suspend fun uploadGpx(file: File): Result<Unit> {
+        return try {
+            val requestFile = file.asRequestBody("application/gpx+xml".toMediaTypeOrNull())
+            val body = MultipartBody.Part.createFormData("file", file.name, requestFile)
+            val response = apiService.uploadGpx(body)
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception("Upload failed: ${response.code()}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun uploadSrt(file: File): Result<Unit> {
+        return try {
+            val requestFile = file.asRequestBody("text/plain".toMediaTypeOrNull())
+            val body = MultipartBody.Part.createFormData("file", file.name, requestFile)
+            val response = apiService.uploadSrt(body)
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception("Upload failed: ${response.code()}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun uploadMp4(file: File): Result<Unit> {
+        return try {
+            val requestFile = file.asRequestBody("video/mp4".toMediaTypeOrNull())
+            val body = MultipartBody.Part.createFormData("file", file.name, requestFile)
+            val response = apiService.uploadMp4(body)
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception("Upload failed: ${response.code()}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun uploadAll(gpxFile: File, srtFile: File, mp4File: File): Result<Unit> {
+        return try {
+            val gpxRequest = gpxFile.asRequestBody("application/gpx+xml".toMediaTypeOrNull())
+            val gpxPart = MultipartBody.Part.createFormData("gpx_file", gpxFile.name, gpxRequest)
+            
+            val srtRequest = srtFile.asRequestBody("text/plain".toMediaTypeOrNull())
+            val srtPart = MultipartBody.Part.createFormData("srt_file", srtFile.name, srtRequest)
+            
+            val mp4Request = mp4File.asRequestBody("video/mp4".toMediaTypeOrNull())
+            val mp4Part = MultipartBody.Part.createFormData("mp4_file", mp4File.name, mp4Request)
+            
+            val response = apiService.uploadAll(gpxPart, srtPart, mp4Part)
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception("Upload failed: ${response.code()}"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override fun markAsSynced(videoName: String) {
+        syncStatusDataSource.markAsSynced(videoName)
+    }
+
+    override fun isSynced(videoName: String): Boolean {
+        return syncStatusDataSource.isSynced(videoName)
     }
 
     private fun createVideoUri(baseName: String): Uri? {

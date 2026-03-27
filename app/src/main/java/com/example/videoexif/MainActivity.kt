@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -33,6 +34,8 @@ import com.example.videoexif.presentation.playback.PlaybackViewModel
 import com.example.videoexif.presentation.playback.VideoPlaybackScreen
 import com.example.videoexif.presentation.record.RecordScreen
 import com.example.videoexif.presentation.record.RecordViewModel
+import com.example.videoexif.presentation.sync.SyncScreen
+import com.example.videoexif.presentation.sync.SyncViewModel
 import com.example.videoexif.ui.theme.VideoExifTheme
 import kotlinx.coroutines.launch
 
@@ -52,6 +55,7 @@ class MainActivity : ComponentActivity() {
                     modelClass.isAssignableFrom(RecordViewModel::class.java) -> RecordViewModel(videoRepository) as T
                     modelClass.isAssignableFrom(GalleryViewModel::class.java) -> GalleryViewModel(videoRepository) as T
                     modelClass.isAssignableFrom(PlaybackViewModel::class.java) -> PlaybackViewModel() as T
+                    modelClass.isAssignableFrom(SyncViewModel::class.java) -> SyncViewModel(videoRepository) as T
                     else -> throw IllegalArgumentException("Unknown ViewModel class")
                 }
             }
@@ -129,13 +133,22 @@ fun MainScreen(factory: ViewModelProvider.Factory) {
                         label = { Text("Record") }
                     )
                     NavigationBarItem(
-                        selected = (currentTab == 1 || selectedVideo != null),
+                        selected = currentTab == 1 && selectedVideo == null,
                         onClick = { 
                             currentTab = 1
                             selectedVideo = null 
                         },
                         icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Gallery") },
                         label = { Text("Gallery") }
+                    )
+                    NavigationBarItem(
+                        selected = currentTab == 2 && selectedVideo == null,
+                        onClick = { 
+                            currentTab = 2
+                            selectedVideo = null 
+                        },
+                        icon = { Icon(Icons.Default.CloudSync, contentDescription = "Sync") },
+                        label = { Text("Sync") }
                     )
                 }
             }
@@ -160,6 +173,10 @@ fun MainScreen(factory: ViewModelProvider.Factory) {
                                 viewModel = galleryViewModel,
                                 onVideoSelected = { video -> selectedVideo = video }
                             )
+                        }
+                        2 -> {
+                            val syncViewModel: SyncViewModel = viewModel(factory = factory)
+                            SyncScreen(viewModel = syncViewModel)
                         }
                     }
                 }

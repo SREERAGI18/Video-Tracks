@@ -4,6 +4,7 @@ import android.graphics.SurfaceTexture
 import com.example.videoexif.domain.model.LocationPoint
 import com.example.videoexif.domain.model.VideoData
 import kotlinx.coroutines.flow.Flow
+import java.io.File
 
 interface VideoRepository {
     fun getVideos(): Flow<List<VideoData>>
@@ -15,4 +16,12 @@ interface VideoRepository {
     fun closeCamera()
     fun startBackgroundThread()
     fun stopBackgroundThread()
+    
+    suspend fun uploadGpx(file: File): Result<Unit>
+    suspend fun uploadSrt(file: File): Result<Unit>
+    suspend fun uploadMp4(file: File): Result<Unit>
+    suspend fun uploadAll(gpxFile: File, srtFile: File, mp4File: File): Result<Unit>
+    
+    fun markAsSynced(videoName: String)
+    fun isSynced(videoName: String): Boolean
 }
