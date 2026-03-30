@@ -20,6 +20,11 @@ class VideoRecorder(private val context: Context) {
     private var backgroundThread: HandlerThread? = null
     private var backgroundHandler: Handler? = null
 
+    @Volatile
+    private var isRecording = false
+    @Volatile
+    private var shouldStartRecording = false
+
     private val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
 
     fun startBackgroundThread() {
@@ -111,13 +116,19 @@ class VideoRecorder(private val context: Context) {
             recordRequestBuilder.addTarget(previewSurface)
             recordRequestBuilder.addTarget(recordSurface)
 
+            shouldStartRecording = true
             camera.createCaptureSession(listOf(previewSurface, recordSurface), object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(session: CameraCaptureSession) {
+                    if (!shouldStartRecording) {
+                        session.close()
+                        return
+                    }
                     captureSession = session
                     recordRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
                     try {
                         session.setRepeatingRequest(recordRequestBuilder.build(), null, backgroundHandler)
                         mediaRecorder?.start()
+                        isRecording = true
                     } catch (e: Exception) {
                         Log.e("VideoRecorder", "Failed to start recording session", e)
                         cleanupRecording()
@@ -137,21 +148,40 @@ class VideoRecorder(private val context: Context) {
     }
     
     private fun cleanupRecording() {
-        try {
-            mediaRecorder?.stop()
-        } catch (e: Exception) {}
+        shouldStartRecording = false
+        if (isRecording) {
+            try {
+                mediaRecorder?.stop()
+            } catch (e: Exception) {}
+            isRecording = false
+        }
         try {
             mediaRecorder?.reset()
         } catch (e: Exception) {}
     }
 
     fun stopRecording() {
+        shouldStartRecording = false
+        if (!isRecording) {
+            Log.d("VideoRecorder", "stopRecording called but not recording")
+            return
+        }
+        
+        isRecording = false
         try {
             mediaRecorder?.stop()
+        } catch (e: RuntimeException) {
+            // MediaRecorder.stop() throws RuntimeException if it's called immediately after start()
+            // or if it's in an invalid state.
+            Log.w("VideoRecorder", "Stop failed", e)
         } catch (e: Exception) {
-            Log.e("VideoRecorder", "Stop failed", e)
+            Log.e("VideoRecorder", "Stop failed with unexpected exception", e)
         } finally {
-            mediaRecorder?.reset()
+            try {
+                mediaRecorder?.reset()
+            } catch (e: Exception) {
+                Log.e("VideoRecorder", "Reset failed", e)
+            }
         }
     }
 

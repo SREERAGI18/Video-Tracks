@@ -70,7 +70,9 @@ class VideoRepositoryImpl(
             LocationPoint(
                 timestamp = System.currentTimeMillis(),
                 latitude = location.latitude,
-                longitude = location.longitude
+                longitude = location.longitude,
+                altitude = if (location.hasAltitude()) location.altitude else null,
+                speed = if (location.hasSpeed()) location.speed else null
             )
         }
     }
@@ -241,10 +243,10 @@ class VideoRepositoryImpl(
             if (!appDataDir.exists()) {
                 appDataDir.mkdirs()
             }
-            
+
             val gpxFile = File(appDataDir, "$baseName.gpx")
             gpxFile.writeText(createGpxContent(startTime, points))
-            
+
             MediaScannerConnection.scanFile(
                 context,
                 arrayOf(gpxFile.absolutePath),
@@ -263,10 +265,10 @@ class VideoRepositoryImpl(
             if (!appDataDir.exists()) {
                 appDataDir.mkdirs()
             }
-            
+
             val srtFile = File(appDataDir, "$baseName.srt")
             srtFile.writeText(createSrtContent(startTime, points))
-            
+
             MediaScannerConnection.scanFile(
                 context,
                 arrayOf(srtFile.absolutePath),
@@ -291,9 +293,17 @@ class VideoRepositoryImpl(
             points.forEach { point ->
                 val time = dateFormat.format(java.util.Date(point.timestamp))
                 val offset = point.timestamp - startTime
-                appendLine("<trkpt lat=\"${"%.6f".format(Locale.US, point.latitude)}\" lon=\"${"%.6f".format(Locale.US, point.longitude)}\">")
+                append("<trkpt lat=\"${"%.6f".format(Locale.US, point.latitude)}\" lon=\"${"%.6f".format(Locale.US, point.longitude)}\">")
+                if (point.altitude != null) {
+                    append("<ele>${"%.2f".format(Locale.US, point.altitude)}</ele>")
+                }
                 appendLine("<time>$time</time>")
-                appendLine("<extensions><video:offset>$offset</video:offset></extensions>")
+                appendLine("<extensions>")
+                appendLine("<video:offset>$offset</video:offset>")
+                if (point.speed != null) {
+                    appendLine("<video:speed>${"%.2f".format(Locale.US, point.speed)}</video:speed>")
+                }
+                appendLine("</extensions>")
                 appendLine("</trkpt>")
             }
             appendLine("</trkseg></trk></gpx>")
@@ -313,7 +323,15 @@ class VideoRepositoryImpl(
 
                 appendLine("${index + 1}")
                 appendLine("${formatSrtTime(startOffset)} --> ${formatSrtTime(endOffset)}")
-                appendLine("Lat: ${"%.6f".format(Locale.US, point.latitude)}, Lon: ${"%.6f".format(Locale.US, point.longitude)}")
+                append("Lat: ${"%.6f".format(Locale.US, point.latitude)}, Lon: ${"%.6f".format(Locale.US, point.longitude)}")
+                if (point.altitude != null) {
+                    append(", Alt: ${"%.1f".format(Locale.US, point.altitude)}m")
+                }
+                if (point.speed != null) {
+                    val speedKmh = point.speed * 3.6f
+                    append(", Speed: ${"%.1f".format(Locale.US, speedKmh)} km/h")
+                }
+                appendLine()
                 appendLine()
             }
         }
