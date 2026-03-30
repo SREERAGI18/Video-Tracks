@@ -2,7 +2,6 @@ package com.example.videoexif
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -55,7 +54,7 @@ class MainActivity : ComponentActivity() {
                     modelClass.isAssignableFrom(RecordViewModel::class.java) -> RecordViewModel(videoRepository) as T
                     modelClass.isAssignableFrom(GalleryViewModel::class.java) -> GalleryViewModel(videoRepository) as T
                     modelClass.isAssignableFrom(PlaybackViewModel::class.java) -> PlaybackViewModel() as T
-                    modelClass.isAssignableFrom(SyncViewModel::class.java) -> SyncViewModel(videoRepository) as T
+                    modelClass.isAssignableFrom(SyncViewModel::class.java) -> SyncViewModel(videoRepository, applicationContext) as T
                     else -> throw IllegalArgumentException("Unknown ViewModel class")
                 }
             }
@@ -191,17 +190,9 @@ fun MainScreen(factory: ViewModelProvider.Factory) {
     }
 }
 
-private val REQUIRED_PERMISSIONS = buildList {
-    add(Manifest.permission.CAMERA)
-    add(Manifest.permission.RECORD_AUDIO)
-    add(Manifest.permission.ACCESS_FINE_LOCATION)
-    add(Manifest.permission.ACCESS_COARSE_LOCATION)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        add(Manifest.permission.READ_MEDIA_VIDEO)
-    } else {
-        add(Manifest.permission.READ_EXTERNAL_STORAGE)
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
-            add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-        }
-    }
-}.toTypedArray()
+private val REQUIRED_PERMISSIONS = arrayOf(
+    Manifest.permission.CAMERA,
+    Manifest.permission.RECORD_AUDIO,
+    Manifest.permission.ACCESS_FINE_LOCATION,
+    Manifest.permission.ACCESS_COARSE_LOCATION
+)

@@ -13,13 +13,6 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Storage permissions for older Android versions -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
-
-    <!-- Storage permissions for Android 13+ -->
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-
     <queries>
         <intent>
             <action android:name="android.intent.action.VIEW" />

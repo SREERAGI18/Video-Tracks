@@ -1,13 +1,16 @@
 package com.example.videoexif.presentation.sync
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.videoexif.domain.repository.VideoRepository
+import com.example.videoexif.util.NetworkUtils
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 class SyncViewModel(
-    private val repository: VideoRepository
+    private val repository: VideoRepository,
+    private val context: Context
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SyncState())
@@ -48,6 +51,11 @@ class SyncViewModel(
 
     private fun uploadAll(intent: SyncIntent.UploadAll) {
         viewModelScope.launch {
+            if (!NetworkUtils.isNetworkAvailable(context)) {
+                _effect.emit(SyncEffect.ShowToast("No internet connection. Please check your network and try again."))
+                return@launch
+            }
+
             val srtFile = intent.videoData.srtFile
             if (srtFile == null) {
                 _effect.emit(SyncEffect.ShowToast("SRT file not found for sync"))

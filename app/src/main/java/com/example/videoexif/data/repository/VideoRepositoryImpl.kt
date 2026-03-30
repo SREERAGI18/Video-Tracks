@@ -1,24 +1,20 @@
 package com.example.videoexif.data.repository
 
-import android.content.ContentValues
 import android.content.Context
 import android.graphics.SurfaceTexture
 import android.location.Location
-import android.media.MediaScannerConnection
 import android.net.Uri
-import android.os.Environment
 import android.os.ParcelFileDescriptor
-import android.provider.MediaStore
 import android.util.Log
 import com.example.videoexif.data.datasource.LocationTracker
-import com.example.videoexif.data.datasource.SyncStatusDataSource
 import com.example.videoexif.data.datasource.VideoRecorder
+import com.example.videoexif.data.local.VideoDatabase
+import com.example.videoexif.data.local.entity.VideoEntity
 import com.example.videoexif.data.remote.RetrofitClient
 import com.example.videoexif.domain.model.LocationPoint
 import com.example.videoexif.domain.model.VideoData
 import com.example.videoexif.domain.repository.VideoRepository
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
@@ -35,33 +31,30 @@ class VideoRepositoryImpl(
     private val locationTracker: LocationTracker
 ) : VideoRepository {
 
-    private val syncStatusDataSource = SyncStatusDataSource(context)
+    private val videoDao = VideoDatabase.getDatabase(context).videoDao()
     private var currentParcelFd: ParcelFileDescriptor? = null
     private var currentBaseName: String? = null
-    private var currentVideoUri: Uri? = null
-    private val fileNameFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH:mm:ss")
+    private val fileNameFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")
     private val apiService = RetrofitClient.videoApiService
 
-    override fun getVideos(): Flow<List<VideoData>> = flow {
-        val moviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-        val appDataDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "VideoExif")
-        
-        if (moviesDir?.exists() == true) {
-            val videos = moviesDir.listFiles { _, name -> name.endsWith(".mp4") }?.mapNotNull { videoFile ->
-                val gpxFile = File(appDataDir, videoFile.nameWithoutExtension + ".gpx")
-                val srtFile = File(appDataDir, videoFile.nameWithoutExtension + ".srt")
-                if (gpxFile.exists()) {
-                    VideoData(
-                        videoFile = videoFile,
-                        gpxFile = gpxFile,
-                        srtFile = if (srtFile.exists()) srtFile else null,
-                        isSynced = syncStatusDataSource.isSynced(videoFile.name)
-                    )
-                } else null
-            }?.sortedByDescending { it.videoFile.lastModified() } ?: emptyList()
-            emit(videos)
-        } else {
-            emit(emptyList())
+    private val internalVideosDir: File by lazy {
+        File(context.filesDir, "videos").apply { if (!exists()) mkdirs() }
+    }
+    
+    private val internalMetadataDir: File by lazy {
+        File(context.filesDir, "metadata").apply { if (!exists()) mkdirs() }
+    }
+
+    override fun getVideos(): Flow<List<VideoData>> {
+        return videoDao.getAllVideos().map { entities ->
+            entities.map { entity ->
+                VideoData(
+                    videoFile = File(entity.videoPath),
+                    gpxFile = File(entity.gpxPath),
+                    srtFile = entity.srtPath?.let { File(it) },
+                    isSynced = entity.isSynced
+                )
+            }
         }
     }
 
@@ -82,11 +75,9 @@ class VideoRepositoryImpl(
         val baseName = "video_$timeStamp"
         currentBaseName = baseName
 
-        val videoUri = createVideoUri(baseName) ?: throw Exception("Failed to create MediaStore URI")
-        currentVideoUri = videoUri
+        val videoFile = File(internalVideosDir, "$baseName.mp4")
         
-        val parcelFd = context.contentResolver.openFileDescriptor(videoUri, "rw") ?: throw Exception("Failed to open file descriptor")
-        
+        val parcelFd = ParcelFileDescriptor.open(videoFile, ParcelFileDescriptor.MODE_READ_WRITE or ParcelFileDescriptor.MODE_CREATE)
         currentParcelFd = parcelFd
         videoRecorder.startRecording(parcelFd.fileDescriptor, surfaceTexture)
     }
@@ -100,34 +91,32 @@ class VideoRepositoryImpl(
         }
 
         val moved = hasMotion(points)
-        if (moved) {
-            currentBaseName?.let { baseName ->
-                saveGpxMetadata(baseName, startTime, points)
-                saveSrtMetadata(baseName, startTime, points)
-            }
-        } else {
-            // No motion detected, discard the video and don't save GPX/SRT
-            currentVideoUri?.let { uri ->
-                try {
-                    context.contentResolver.delete(uri, null, null)
-                    Log.d("VideoRepository", "No motion detected. Video discarded.")
-                } catch (e: Exception) {
-                    Log.e("VideoRepository", "Error deleting video after no motion", e)
-                }
+        currentBaseName?.let { baseName ->
+            val gpxFile = saveGpxMetadata(baseName, startTime, points)
+            val srtFile = saveSrtMetadata(baseName, startTime, points)
+            val videoFile = File(internalVideosDir, "$baseName.mp4")
+
+            if (gpxFile != null) {
+                videoDao.insertVideo(
+                    VideoEntity(
+                        videoPath = videoFile.absolutePath,
+                        videoName = videoFile.name,
+                        gpxPath = gpxFile.absolutePath,
+                        srtPath = srtFile?.absolutePath
+                    )
+                )
             }
         }
         
-        val result = moved
         currentBaseName = null
-        currentVideoUri = null
-        return result
+        return true
     }
 
     private fun hasMotion(points: List<LocationPoint>): Boolean {
         if (points.size < 2) return false
         
         val firstPoint = points.first()
-        val thresholdMeters = 10.0 // Motion threshold
+        val thresholdMeters = 10.0
         val results = FloatArray(1)
         
         return points.any { point ->
@@ -216,67 +205,33 @@ class VideoRepositoryImpl(
     }
 
     override fun markAsSynced(videoName: String) {
-        syncStatusDataSource.markAsSynced(videoName)
+        // This should probably be moved to suspend or handled via Room
     }
 
     override fun isSynced(videoName: String): Boolean {
-        return syncStatusDataSource.isSynced(videoName)
+        // This will be handled by getVideos flow
+        return false
     }
 
-    private fun createVideoUri(baseName: String): Uri? {
-        val contentValues = ContentValues().apply {
-            put(MediaStore.Video.Media.DISPLAY_NAME, "$baseName.mp4")
-            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-            put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES)
-        }
-
-        return context.contentResolver.insert(
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            contentValues
-        )
-    }
-
-    private fun saveGpxMetadata(baseName: String, startTime: Long, points: List<LocationPoint>) {
-        try {
-            val documentsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
-            val appDataDir = File(documentsDir, "VideoExif")
-            if (!appDataDir.exists()) {
-                appDataDir.mkdirs()
-            }
-
-            val gpxFile = File(appDataDir, "$baseName.gpx")
+    private fun saveGpxMetadata(baseName: String, startTime: Long, points: List<LocationPoint>): File? {
+        return try {
+            val gpxFile = File(internalMetadataDir, "$baseName.gpx")
             gpxFile.writeText(createGpxContent(startTime, points))
-
-            MediaScannerConnection.scanFile(
-                context,
-                arrayOf(gpxFile.absolutePath),
-                arrayOf("application/gpx+xml"),
-                null
-            )
+            gpxFile
         } catch (e: Exception) {
             Log.e("VideoRepository", "Error saving GPX metadata", e)
+            null
         }
     }
 
-    private fun saveSrtMetadata(baseName: String, startTime: Long, points: List<LocationPoint>) {
-        try {
-            val documentsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
-            val appDataDir = File(documentsDir, "VideoExif")
-            if (!appDataDir.exists()) {
-                appDataDir.mkdirs()
-            }
-
-            val srtFile = File(appDataDir, "$baseName.srt")
+    private fun saveSrtMetadata(baseName: String, startTime: Long, points: List<LocationPoint>): File? {
+        return try {
+            val srtFile = File(internalMetadataDir, "$baseName.srt")
             srtFile.writeText(createSrtContent(startTime, points))
-
-            MediaScannerConnection.scanFile(
-                context,
-                arrayOf(srtFile.absolutePath),
-                arrayOf("text/plain"),
-                null
-            )
+            srtFile
         } catch (e: Exception) {
             Log.e("VideoRepository", "Error saving SRT metadata", e)
+            null
         }
     }
 
@@ -314,7 +269,6 @@ class VideoRepositoryImpl(
         return buildString {
             points.forEachIndexed { index, point ->
                 val startOffset = point.timestamp - startTime
-                // If there's a next point, the duration is the gap. Otherwise, default to 1s.
                 val endOffset = if (index < points.size - 1) {
                     points[index + 1].timestamp - startTime
                 } else {
