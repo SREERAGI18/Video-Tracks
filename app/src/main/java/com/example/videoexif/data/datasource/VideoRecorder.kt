@@ -24,6 +24,8 @@ class VideoRecorder(private val context: Context) {
     private var isRecording = false
     @Volatile
     private var shouldStartRecording = false
+    
+    private var isStabilizationEnabled = true
 
     private val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
 
@@ -75,6 +77,10 @@ class VideoRecorder(private val context: Context) {
         mediaRecorder = null
     }
 
+    fun setStabilizationEnabled(enabled: Boolean) {
+        isStabilizationEnabled = enabled
+    }
+
     fun startPreview(surfaceTexture: SurfaceTexture) {
         val camera = cameraDevice ?: return
         surfaceTexture.setDefaultBufferSize(1920, 1080)
@@ -82,6 +88,8 @@ class VideoRecorder(private val context: Context) {
         
         val previewRequestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
         previewRequestBuilder.addTarget(previewSurface)
+
+        applyStabilization(previewRequestBuilder)
 
         camera.createCaptureSession(listOf(previewSurface), object : CameraCaptureSession.StateCallback() {
             override fun onConfigured(session: CameraCaptureSession) {
@@ -116,6 +124,8 @@ class VideoRecorder(private val context: Context) {
             recordRequestBuilder.addTarget(previewSurface)
             recordRequestBuilder.addTarget(recordSurface)
 
+            applyStabilization(recordRequestBuilder)
+
             shouldStartRecording = true
             camera.createCaptureSession(listOf(previewSurface, recordSurface), object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(session: CameraCaptureSession) {
@@ -144,6 +154,36 @@ class VideoRecorder(private val context: Context) {
             Log.e("VideoRecorder", "Error starting recording", e)
             cleanupRecording()
             throw e
+        }
+    }
+
+    private fun applyStabilization(builder: CaptureRequest.Builder) {
+        if (!isStabilizationEnabled) {
+            builder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_OFF)
+            builder.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_OFF)
+            Log.d("VideoRecorder", "Stabilization disabled")
+            return
+        }
+
+        val cameraId = getCameraId() ?: return
+        val characteristics = cameraManager.getCameraCharacteristics(cameraId)
+
+        // 1. Try to enable Optical Image Stabilization (OIS)
+        val oisModes = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)
+        if (oisModes != null && oisModes.contains(CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_ON)) {
+            builder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_ON)
+            Log.d("VideoRecorder", "OIS enabled")
+        } else {
+            Log.d("VideoRecorder", "OIS not supported")
+        }
+
+        // 2. Try to enable Video Stabilization (EIS)
+        val videoStabilizationModes = characteristics.get(CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES)
+        if (videoStabilizationModes != null && videoStabilizationModes.contains(CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_ON)) {
+            builder.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_ON)
+            Log.d("VideoRecorder", "Video Stabilization (EIS) enabled")
+        } else {
+            Log.d("VideoRecorder", "Video Stabilization (EIS) not supported")
         }
     }
     

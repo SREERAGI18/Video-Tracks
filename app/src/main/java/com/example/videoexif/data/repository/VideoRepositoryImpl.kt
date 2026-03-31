@@ -109,7 +109,11 @@ class VideoRepositoryImpl(
         }
         
         currentBaseName = null
-        return true
+        return moved
+    }
+
+    override fun setStabilizationEnabled(enabled: Boolean) {
+        videoRecorder.setStabilizationEnabled(enabled)
     }
 
     private fun hasMotion(points: List<LocationPoint>): Boolean {
@@ -197,19 +201,21 @@ class VideoRepositoryImpl(
             val mp4Part = MultipartBody.Part.createFormData("mp4_file", mp4File.name, mp4Request)
             
             val response = apiService.uploadAll(gpxPart, srtPart, mp4Part)
-            if (response.isSuccessful) Result.success(Unit)
+            if (response.isSuccessful) {
+                markAsSynced(mp4File)
+                Result.success(Unit)
+            }
             else Result.failure(Exception("Upload failed: ${response.code()}"))
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    override fun markAsSynced(videoName: String) {
-        // This should probably be moved to suspend or handled via Room
+    override suspend fun markAsSynced(videoPath: File) {
+        videoDao.updateSyncStatus(videoPath = videoPath.absolutePath, isSynced = true)
     }
 
     override fun isSynced(videoName: String): Boolean {
-        // This will be handled by getVideos flow
         return false
     }
 

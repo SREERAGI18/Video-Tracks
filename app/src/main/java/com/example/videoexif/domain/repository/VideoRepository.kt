@@ -17,11 +17,13 @@ interface VideoRepository {
     fun startBackgroundThread()
     fun stopBackgroundThread()
     
+    fun setStabilizationEnabled(enabled: Boolean)
+    
     suspend fun uploadGpx(file: File): Result<Unit>
     suspend fun uploadSrt(file: File): Result<Unit>
     suspend fun uploadMp4(file: File): Result<Unit>
     suspend fun uploadAll(gpxFile: File, srtFile: File, mp4File: File): Result<Unit>
     
-    fun markAsSynced(videoName: String)
+    suspend fun markAsSynced(videoPath: File)
     fun isSynced(videoName: String): Boolean
 }

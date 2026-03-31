@@ -7,14 +7,8 @@ sealed class RecordIntent {
     data class StartPreview(val surfaceTexture: SurfaceTexture) : RecordIntent()
     data class ToggleRecording(val surfaceTexture: SurfaceTexture) : RecordIntent()
     object StopPreview : RecordIntent()
+    data class ToggleStabilization(val enabled: Boolean, val surfaceTexture: SurfaceTexture) : RecordIntent()
 }
-
-data class RecordState(
-    val isRecording: Boolean = false,
-    val locationPoints: List<LocationPoint> = emptyList(),
-    val recordingStartTime: Long = 0L,
-    val error: String? = null
-)
 
 sealed class RecordEffect {
     data class ShowToast(val message: String) : RecordEffect()

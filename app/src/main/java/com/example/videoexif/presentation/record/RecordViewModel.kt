@@ -35,6 +35,7 @@ class RecordViewModel(
             is RecordIntent.StartPreview -> startPreview(intent.surfaceTexture)
             is RecordIntent.ToggleRecording -> toggleRecording(intent.surfaceTexture)
             is RecordIntent.StopPreview -> repository.closeCamera()
+            is RecordIntent.ToggleStabilization -> toggleStabilization(intent.enabled, intent.surfaceTexture)
         }
     }
 
@@ -95,6 +96,15 @@ class RecordViewModel(
                 _state.update { it.copy(error = e.message) }
                 _effect.emit(RecordEffect.ShowToast("Failed to stop recording: ${e.message}"))
             }
+        }
+    }
+
+    private fun toggleStabilization(enabled: Boolean, surfaceTexture: SurfaceTexture) {
+        repository.setStabilizationEnabled(enabled)
+        _state.update { it.copy(isStabilizationEnabled = enabled) }
+        // Restart preview to apply changes if not recording
+        if (!_state.value.isRecording) {
+            repository.startPreview(surfaceTexture)
         }
     }
 }

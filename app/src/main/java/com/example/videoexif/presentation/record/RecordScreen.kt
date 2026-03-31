@@ -5,8 +5,11 @@ import android.view.TextureView
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -29,7 +32,7 @@ fun RecordScreen(viewModel: RecordViewModel) {
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
             factory = { ctx ->
                 TextureView(ctx).apply {
@@ -51,13 +54,51 @@ fun RecordScreen(viewModel: RecordViewModel) {
                     }
                 }
             },
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.fillMaxSize()
         )
 
+        // Stabilization Toggle (only visible when not recording)
+        if (!state.isRecording) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp),
+                color = Color.Black.copy(alpha = 0.5f),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Vibration,
+                        contentDescription = "Stabilization",
+                        tint = if (state.isStabilizationEnabled) Color.Green else Color.White
+                    )
+                    Text(
+                        "Anti-Shake",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Switch(
+                        checked = state.isStabilizationEnabled,
+                        onCheckedChange = { enabled ->
+                            surfaceTexture?.let {
+                                viewModel.onIntent(RecordIntent.ToggleStabilization(enabled, it))
+                            }
+                        }
+                    )
+                }
+            }
+        }
+
+        // Recording Control
         Row(
             modifier = Modifier
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(32.dp),
             horizontalArrangement = Arrangement.Center
         ) {
             Button(
