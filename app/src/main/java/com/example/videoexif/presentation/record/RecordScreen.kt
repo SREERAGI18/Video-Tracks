@@ -1,8 +1,10 @@
 package com.example.videoexif.presentation.record
 
+import android.app.Activity
 import android.graphics.SurfaceTexture
 import android.view.TextureView
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -21,6 +23,19 @@ fun RecordScreen(viewModel: RecordViewModel) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     var surfaceTexture by remember { mutableStateOf<SurfaceTexture?>(null) }
+
+    // Keep screen on during recording
+    val activity = context as? Activity
+    DisposableEffect(state.isRecording) {
+        if (state.isRecording) {
+            activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
 
     LaunchedEffect(viewModel.effect) {
         viewModel.effect.collect { effect ->
