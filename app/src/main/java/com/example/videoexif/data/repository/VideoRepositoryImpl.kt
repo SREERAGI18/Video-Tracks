@@ -34,7 +34,7 @@ class VideoRepositoryImpl(
     private val videoDao = VideoDatabase.getDatabase(context).videoDao()
     private var currentParcelFd: ParcelFileDescriptor? = null
     private var currentBaseName: String? = null
-    private val fileNameFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")
+    private val fileNameFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH:mm:ss")
     private val apiService = RetrofitClient.videoApiService
 
     private val internalVideosDir: File by lazy {
